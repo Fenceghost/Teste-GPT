@@ -1,0 +1,121 @@
+#ItemManager
+
+✅ Código GLOBAL (ItemManager.gd)
+✅ Código para spawnar o item no mundo (ItemPickup.tscn + script)
+✅ Código do INIMIGO (onde ocorre o drop)
+
+📌 Crie o arquivo:
+res://autoload/ItemManager.gd
+
+extends Node
+##
+## ItemManager — banco global de itens + drop com porcentagem
+## Singleton (Autoload)
+##
+
+# Tabela de itens
+# Cada item agora possui um "drop_chance" (0.0 a 1.0)
+var items := {
+    1: {
+        "name": "Moeda de Ouro",
+        "type": "currency",
+        "value": 1,
+        "sprite_path": "res://art/itens/gold_coin.png",
+        "drop_chance": 1.0   # 100%
+    },
+    2: {
+        "name": "Poção de Vida",
+        "type": "consumable",
+        "heal": 20,
+        "sprite_path": "res://art/itens/health_potion.png",
+        "drop_chance": 0.5   # 50%
+    },
+    3: {
+        "name": "Espada Enferrujada",
+        "type": "weapon",
+        "atk": 4,
+        "sprite_path": "res://art/itens/rusty_sword.png",
+        "drop_chance": 0.2   # 20%
+    }
+}
+
+
+func get_item(id: int) -> Dictionary:
+    if items.has(id):
+        return items[id]
+    return null
+
+
+func get_random_drop(drop_ids: Array[int]) -> Dictionary:
+    ##
+    ## Recebe uma lista de IDs possíveis de drop.
+    ## Para cada item, sorteia se ele dropa baseado em drop_chance.
+    ## Retorna UM item aleatório que passou no teste de drop.
+    ## Retorna null se nada for sorteado.
+    ##
+    
+    var possible_drops = []
+    
+    for id in drop_ids:
+        var item = get_item(id)
+        if item == null:
+            continue
+        var chance = item.get("drop_chance", 1.0)
+        if randf() <= chance:
+            possible_drops.append(item)
+    
+    if possible_drops.empty():
+        return null
+    
+    # Sorteia aleatoriamente um item dentre os aprovados pelo teste de chance
+    return possible_drops.pick_random()
+
+
+res://objetos/ItemPickup.tscn
+ItemPickup (Area2D)
+ ├─ Sprite2D
+ └─ CollisionShape2D
+
+extends Area2D
+##
+## ItemPickup — objeto físico do item no chão
+## Ele recebe os dados do item e mostra o sprite correspondente.
+##
+
+extends Area2D
+
+var item_data: Dictionary
+
+func setup(data: Dictionary):
+    item_data = data
+
+    if item_data.has("sprite_path"):
+        var tex = load(item_data["sprite_path"])
+        if tex:
+            $Sprite2D.texture = tex
+        else:
+            push_warning("Sprite não encontrado: %s" % item_data["sprite_path"])
+
+
+Enemy.gd (completo e comentado)
+
+extends CharacterBody2D
+
+@export var drop_ids: Array[int] = [1, 2, 3]  # IDs que este inimigo pode dropar
+
+func morrer():
+    # Sorteia o item baseado nas chances
+    var item_data = ItemManager.get_random_drop(drop_ids)
+
+    if item_data != null:
+        spawn_item(item_data)
+    
+    # Remove inimigo
+    queue_free()
+
+
+func spawn_item(item_data: Dictionary):
+    var item_scene = preload("res://objetos/ItemPickup.tscn").instantiate()
+    item_scene.setup(item_data)
+    get_tree().current_scene.add_child(item_scene)
+    item_scene.global_position = global_position
