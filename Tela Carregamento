@@ -1,0 +1,132 @@
+#/autoload/SceneLoader.gd     ← gerenciador global
+#/ui/LoadingScreen.tscn       ← tela de loading + fade
+
+#Project → Project Settings → Autoload
+#Adicione: SceneLoader.gd como Singleton.
+
+# LoadingScreen (CanvasLayer)
+#  ├─ ColorRect (chamado "Fade")
+#  ├─ VBoxContainer
+#  │    ├─ Label ("Carregando...")
+#  │    └─ ProgressBar
+#  └─ AnimationPlayer
+
+
+#Configurações do Fade:
+#Cor: preto #000000
+#Alpha: 1.0 (totalmente escuro)
+#Preenchendo a tela inteira (anchors = full rect)
+
+#Crie duas animações:
+#fade_in Node: Fade
+#Modifique propriedade: color:a
+#De 1.0 → 0.0 Duração: 0.6s
+
+#fade_out Node: Fade
+#Modifique propriedade: color:a
+#De 0.0 → 1.0 Duração: 0.6s
+
+#Assim temos:
+#fade-in: aparece o loading suavemente
+#fade-out: escurece antes de trocar de cena
+
+                  #LoadingScreen.gd
+
+extends CanvasLayer
+
+##
+## Variáveis configuráveis
+##
+
+# Caminho da cena que queremos carregar
+var target_scene_path: String
+
+# Loader assíncrono da Godot
+var loader
+
+# Progresso do carregamento (0–1)
+var load_progress := 0.0
+
+
+func _ready():
+    ##
+    ## Quando a tela aparece, começamos com fade-in (já está preta)
+    ## e logo em seguida iniciamos o carregamento da cena.
+    ##
+    $AnimationPlayer.play("fade_in")
+    start_async_load()
+
+
+func start_async_load():
+    ##
+    ## Inicia o carregamento da cena em outra thread,
+    ## evitando travar o jogo.
+    ##
+    loader = ResourceLoader.load_threaded_request(target_scene_path)
+    set_process(true)
+
+
+func _process(delta):
+    ##
+    ## Toda frame, verificamos o progresso do carregamento.
+    ## load_threaded_get_status preenche a variável load_progress.
+    ##
+    if loader == null:
+        return
+
+    var status = ResourceLoader.load_threaded_get_status(
+        target_scene_path,
+        load_progress
+    )
+
+    # Atualiza a barra de progresso
+    $VBoxContainer/ProgressBar.value = load_progress * 100
+
+    if status == ResourceLoader.THREAD_LOAD_LOADED:
+        ##
+        ## Cena prontinha. Agora fazemos o fade-out para preto
+        ## antes de trocar efetivamente de cena.
+        ##
+        set_process(false)
+        $AnimationPlayer.play("fade_out")
+        await $AnimationPlayer.animation_finished
+
+        # Recupera a cena carregada na thread
+        var scene = ResourceLoader.load_threaded_get(target_scene_path)
+
+        # Troca para nova cena
+        get_tree().change_scene_to_packed(scene)
+
+        # Remove a tela de loading após a mudança
+        queue_free()
+
+
+extends Node
+
+# Caminho fixo para a cena de loading
+const LOADING_SCREEN := "res://ui/LoadingScreen.tscn"
+
+
+func transition_to_scene(scene_path: String):
+    ##
+    ## Esta é a função pública que você chama
+    ## para trocar de cena com transição e loading.
+    ##
+    
+    # Instancia a tela de loading
+    var loading_screen = load(LOADING_SCREEN).instantiate()
+
+    # Passa o caminho da cena que será carregada
+    loading_screen.target_scene_path = scene_path
+
+    ##
+    ## Adicionamos o loading acima de tudo.
+    ## CanvasLayer garante que está sempre visível.
+    ##
+    get_tree().root.add_child(loading_screen)
+
+
+
+          #Como usar no jogo
+SceneLoader.transition_to_scene("res://cenas/caminho da cena.tscn")
+
